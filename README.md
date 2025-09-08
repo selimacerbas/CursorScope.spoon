@@ -8,6 +8,12 @@ Follows your pointer across multiple displays, shows a fixed, tasteful Menu Bar 
 > You might also interested in this tool as well [KeyCaster](https://github.com/selimacerbas/KeyCaster.spoon)
 ---
 
+## Screenshots
+
+![Circular scope at top-left](assets/cursor.png)
+
+---
+
 ## Features
 
 * 🔍 **Magnifier scope** docked to a corner of the active display (circle or rounded rectangle)
