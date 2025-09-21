@@ -1,11 +1,11 @@
-
 # CursorScope.spoon
 
 High-visibility **cursor highlight** + optional live **magnifier scope** for [Hammerspoon](https://www.hammerspoon.org/).
 
-Follows your pointer across multiple displays, shows a fixed, tasteful Menu Bar icon while running, and is easy to configure.
+Follows your pointer across multiple displays, shows a fixed, tasteful menu bar icon while running, and is easy to configure.
 
-> You might also interested in this tool as well [KeyCaster](https://github.com/selimacerbas/KeyCaster.spoon)
+> You might also be interested in [KeyCaster](https://github.com/selimacerbas/KeyCaster.spoon)
+
 ---
 
 ## Screenshots
@@ -16,13 +16,14 @@ Follows your pointer across multiple displays, shows a fixed, tasteful Menu Bar 
 
 ## Features
 
-* 🔍 **Magnifier scope** docked to a corner of the active display (circle or rounded rectangle)
-* 🎯 **Cursor highlight**: ring, crosshair, or dot, with a click-flash color
-* 🖥️ **Multi-display aware**: scope streams from whatever display the cursor is on
-* 🧭 **Menu Bar**: fixed cursor-style icon; click → “Exit CursorScope”
-* ⌨️ **Hotkeys**: start/stop/toggle
-* ⚙️ **Clean config** grouped as `global`, `cursor`, and `scope`
-* 💤 Optional mode: highlight only (scope disabled)
+* 🔍 **Draggable magnifier scope** (circle or rounded rectangle). Hold **⌘ + ⌥** and drag the scope to move it. Position is **remembered per display**.
+* 🎯 **Cursor highlight**: ring, crosshair, or dot—with click flash.
+* 🖥️ **Multi-display aware**: scope always samples from the display under your pointer.
+* 🧭 **Menu bar controls**: toggle scope, switch scope/cursor shape, set **Zoom**, **Size**, and **FPS** (presets + custom).
+* ⌨️ **Hotkeys**: start/stop/toggle (configurable).
+* ⚙️ **Clean config** grouped as `global`, `cursor`, and `scope`.
+* 💤 **Highlight-only** mode (scope disabled).
+* 🌀 **No infinite tunnel**: when the capture area would overlap the scope, the scope briefly **freezes** its last image to avoid recursion.
 
 ---
 
@@ -32,8 +33,8 @@ Follows your pointer across multiple displays, shows a fixed, tasteful Menu Bar 
 * **Hammerspoon** 0.9.100+
 * **Permissions**
 
-  * *Accessibility* (for event taps / hotkeys)
-  * *Screen Recording* (for the scope capture). If the scope is black/blank, enable this for **Hammerspoon** in **System Settings → Privacy & Security → Screen Recording**.
+  * **Accessibility** (for event taps / hotkeys and drag gesture)
+  * **Screen Recording** (for scope capture). If the scope is black/blank, enable this for **Hammerspoon** in **System Settings → Privacy & Security → Screen Recording**
 
 ---
 
@@ -41,21 +42,21 @@ Follows your pointer across multiple displays, shows a fixed, tasteful Menu Bar 
 
 ### Option A — Download release (recommended)
 
-1. Download `CursorScope.spoon.zip` from your repo’s **Releases**.
+1. Download `CursorScope.spoon.zip` from the repo’s **Releases**.
 2. Unzip and move `CursorScope.spoon` into:
 
    ```
    ~/.hammerspoon/Spoons/
    ```
 3. Add the **Quick start** snippet below to your `~/.hammerspoon/init.lua`.
-4. Reload Hammerspoon (menu icon → **Reload Config**).
+4. Reload Hammerspoon (menu bar icon → **Reload Config**).
 
 ### Option B — Git clone (for development)
 
 ```bash
 mkdir -p ~/.hammerspoon/Spoons
 cd ~/.hammerspoon/Spoons
-git clone https://github.com/yourname/CursorScope.spoon.git CursorScope.spoon
+git clone https://github.com/selimacerbas/CursorScope.spoon.git CursorScope.spoon
 ```
 
 Then follow **Quick start**.
@@ -82,7 +83,7 @@ spoon.CursorScope:configure({
     shape    = "circle",               -- "rectangle" | "circle"
     size     = 240,                    -- px
     zoom     = 2.5,                    -- 1.5–4.0 recommended
-    position = { corner="topLeft", x=24, y=24 },
+    -- topLeft  = {x=1200, y=100},     -- optional absolute position; per-screen memory thereafter
     -- cornerRadius = 12,              -- rectangle only
     -- borderWidth  = 2,
     -- borderColor  = {red=1, green=1, blue=1, alpha=0.9},
@@ -101,11 +102,33 @@ spoon.CursorScope:bindHotkeys({
 -- spoon.CursorScope:start()
 ```
 
-**Menu Bar:** while running, a cursor-style icon appears; click it → **Exit CursorScope**.
+**Menu bar:** while running, a cursor-style icon appears. Click for a menu with Scope toggle, shapes, Zoom, Size, FPS, Start/Stop, Exit.
 
 ---
 
-## Configuration
+## Menubar actions
+
+* **Scope**: Enabled/Disabled (toggle, with checkmark)
+* **Scope Shape**: Rectangle • Circle
+* **Cursor Shape**: Ring • Crosshair • Dot
+* **FPS**: 15 / 24 / 30 / 45 / 60 / **Custom…** (restarts stream timer if changed)
+* **Zoom**: 1.5× / 2.0× / 3.0× / 4.0× / **Custom…**
+* **Size**: Small (160) / Medium (220) / Large (320) / **Custom…** (rebuilds scope at new size)
+* **Start/Stop**, **Exit CursorScope**
+
+---
+
+## Gestures
+
+* **Move the scope**: hold **⌘ + ⌥**, click inside the scope, and drag.
+
+  * The border flashes **yellow** during drag.
+  * Position is clamped to the current display and **remembered per display**.
+* **Cursor highlight** is click-through, so it won’t intercept drags/clicks.
+
+---
+
+## Configuration reference
 
 All options are set in a single call:
 
@@ -137,21 +160,19 @@ spoon.CursorScope:configure({
 
 ### `scope`
 
-| Key               | Type                                                       |                                Default | Description                                    |
-| ----------------- | ---------------------------------------------------------- | -------------------------------------: | ---------------------------------------------- |
-| `enabled`         | boolean                                                    |                                 `true` | Show/hide the scope entirely.                  |
-| `size`            | number                                                     |                                  `220` | Scope window size (square, in px).             |
-| `zoom`            | number                                                     |                                  `2.0` | Magnification (try 1.5–4.0).                   |
-| `shape`           | `"rectangle" \| "circle"`                                  |                          `"rectangle"` | Scope window shape.                            |
-| `cornerRadius`    | number                                                     |                                   `12` | Rounded corners (rectangle only).              |
-| `borderWidth`     | number                                                     |                                    `2` | Scope border thickness.                        |
-| `borderColor`     | color table                                                |  `{red=1, green=1, blue=1, alpha=0.9}` | Border color.                                  |
-| `background`      | color table                                                | `{red=0, green=0, blue=0, alpha=0.25}` | Background/dimming behind the image.           |
-| `position.corner` | `"topLeft" \| "topRight" \| "bottomLeft" \| "bottomRight"` |                        `"bottomRight"` | Corner of the **active display**.              |
-| `position.x`      | number                                                     |                                   `20` | Horizontal offset from the chosen corner (px). |
-| `position.y`      | number                                                     |                                   `80` | Vertical offset from the chosen corner (px).   |
+| Key            | Type                      |                                Default | Description                                         |
+| -------------- | ------------------------- | -------------------------------------: | --------------------------------------------------- |
+| `enabled`      | boolean                   |                                 `true` | Show/hide the scope entirely.                       |
+| `size`         | number                    |                                  `220` | Scope window size (square, in px).                  |
+| `zoom`         | number                    |                                  `2.0` | Magnification (try 1.5–4.0).                        |
+| `shape`        | `"rectangle" \| "circle"` |                          `"rectangle"` | Scope window shape.                                 |
+| `cornerRadius` | number                    |                                   `12` | Rounded corners (rectangle only).                   |
+| `borderWidth`  | number                    |                                    `2` | Scope border thickness.                             |
+| `borderColor`  | color table               |  `{red=1, green=1, blue=1, alpha=0.9}` | Border color.                                       |
+| `background`   | color table               | `{red=0, green=0, blue=0, alpha=0.25}` | Background/dimming behind the image.                |
+| `topLeft`      | `{x:number,y:number}`     |                                  `nil` | Optional absolute top-left; per-screen memory wins. |
 
-**Multi-display behavior:** The scope anchors to the configured corner of whichever display the cursor is currently on and streams that display’s pixels.
+**Multi-display behavior:** Each display remembers its own position for the scope. On a display you’ve never used, the scope maps from your last position relatively; if there’s no history, it defaults near bottom-right.
 
 ---
 
@@ -177,64 +198,41 @@ spoon.CursorScope:bindHotkeys({
 ## API
 
 ```lua
-spoon.CursorScope:start()          -- enable highlight/scope; show Menu Bar icon
-spoon.CursorScope:stop()           -- disable and remove Menu Bar icon
-spoon.CursorScope:toggle()         -- start/stop
-spoon.CursorScope:configure(tbl)   -- apply configuration (see above)
-spoon.CursorScope:setScopeEnabled(true_or_false) -- quick scope toggle
+spoon.CursorScope:start()                          -- enable highlight/scope; show menu bar icon
+spoon.CursorScope:stop()                           -- disable and remove menu bar icon
+spoon.CursorScope:toggle()                         -- start/stop
+spoon.CursorScope:configure(tbl)                   -- apply configuration (see above)
+spoon.CursorScope:setScopeEnabled(true_or_false)   -- quick scope toggle
+spoon.CursorScope:setScopeTopLeft(x, y)            -- set absolute position (current screen)
 ```
 
-> The Menu Bar icon is fixed and non-configurable by design. It shows only while running and includes **Exit CursorScope**.
+> The menu bar icon is fixed and non-configurable by design. It shows only while running.
 
 ---
 
 ## Troubleshooting
 
-* **Scope is black/blank**
-  Grant **Screen Recording** permission to Hammerspoon (System Settings → Privacy & Security → Screen Recording).
-
-* **No Menu Bar icon**
-  The icon appears **only while running** (start with your hotkey or call `spoon.CursorScope:start()` in your init file).
-
-* **Crosshair looks blurry**
-  Use an **even** `cursor.lineWidth` (e.g., 4, 6, 8) for pixel-aligned arms on Retina displays.
-
-* **High CPU**
-  Lower `global.fps` (e.g., 30) and/or `scope.zoom`. Bigger `scope.size` also costs more.
+* **Scope is black/blank** → Grant **Screen Recording** permission to Hammerspoon (System Settings → Privacy & Security → Screen Recording).
+* **Drag doesn’t work** → Ensure **Accessibility** permission is granted to Hammerspoon (System Settings → Privacy & Security → Accessibility). Hold **⌘ + ⌥** while you click and drag inside the scope.
+* **Crosshair looks blurry** → Use an **even** `cursor.lineWidth` (e.g., 4, 6, 8) for pixel-aligned arms on Retina displays.
+* **High CPU** → Lower `global.fps` (e.g., 30) and/or `scope.zoom`. Bigger `scope.size` also costs more.
+* **“Infinite tunnel” effect** → By design, the scope **freezes** its image when the capture area would include the scope window. Move the pointer off the scope to resume updates.
 
 ---
 
-## Contributing
-
-PRs and issues are welcome!
-
-* Keep the config grouped (`global`, `cursor`, `scope`).
-* The Menu Bar icon is intentionally **not user-configurable**.
-* Maintain rock-solid cross-display behavior (`absolute ↔ local` conversions for snapshots).
-* Include a short demo GIF for visual features when possible.
-
-**Dev setup:**
+## Dev setup
 
 ```bash
-git clone https://github.com/yourname/CursorScope.spoon.git
+git clone https://github.com/selimacerbas/CursorScope.spoon.git
 ln -s "$(pwd)/CursorScope.spoon" ~/.hammerspoon/Spoons/CursorScope.spoon
 # Edit init.lua, then in Hammerspoon: Reload Config
 ```
 
 ---
 
-## Roadmap
-
-* Optional drop shadow / glow for the scope
-* Crosshair center gap & adjustable arm lengths
-* Quick Menu Bar toggles: “Toggle Scope”, “Restart”
-* Presets/profiles (presenting vs. recording)
-
----
-
 ## License
 
-MIT © Your Name — see [`LICENSE`](LICENSE)
+MIT © Selim Acerbas — see [`LICENSE`](LICENSE)
 
 ---
 
