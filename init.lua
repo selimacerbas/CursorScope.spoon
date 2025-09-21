@@ -1,4 +1,4 @@
--- CursorScope.spoon (draggable scope, per-screen positions only)
+-- CursorScope.spoon (draggable scope, per-screen positions, rich menubar)
 -- Author: Selim Acerbas
 -- License: MIT
 
@@ -6,12 +6,14 @@ local obj              = {}
 obj.__index            = obj
 
 obj.name               = "CursorScope"
-obj.version            = "0.0.2" -- per-screen only, cleanup
+obj.version            = "0.0.3" -- fix self-at-top errors, add Zoom/Size menus, dynamic canvas sizing
 obj.author             = "Selim Acerbas"
 obj.homepage           = "https://www.github.com/selimacerbas/CursorScope.spoon/"
 obj.license            = "MIT"
 
--- Defaults (override via :configure{ global=..., cursor=..., scope=... })
+-- =====================
+-- Defaults
+-- =====================
 obj._cfg               = {
     global = {
         fps = 30, -- render rate for follow/scope
@@ -32,12 +34,13 @@ obj._cfg               = {
         borderWidth  = 2,
         borderColor  = { red = 1, green = 1, blue = 1, alpha = 0.9 },
         background   = { red = 0, green = 0, blue = 0, alpha = 0.25 },
-        -- Absolute top-left on the current screen; will be filled automatically.
-        topLeft      = nil,
+        topLeft      = nil, -- absolute top-left on current screen
     },
 }
 
+-- =====================
 -- State
+-- =====================
 obj._running           = false
 obj._log               = hs.logger.new("CursorScope", "info")
 obj._menubar           = nil
@@ -46,6 +49,7 @@ obj._dot               = nil -- dot
 obj._crosshairCanvas   = nil -- canvas with 2 rects: ids "h" and "v"
 obj._scopeCanvas       = nil
 obj._scopeShapeApplied = nil
+obj._scopeSizeApplied  = nil
 obj._mouseTap          = nil
 obj._dragTap           = nil
 obj._timer             = nil
@@ -64,7 +68,9 @@ obj.defaultHotkeys     = {
     stop  = { { "ctrl", "alt", "cmd" }, "U" },
 }
 
+-- =====================
 -- Utils
+-- =====================
 local function clamp(v, lo, hi)
     if v < lo then return lo elseif v > hi then return hi else return v end
 end
@@ -73,8 +79,6 @@ local function deepMerge(dst, src)
         if type(v) == "table" and type(dst[k]) == "table" then deepMerge(dst[k], v) else dst[k] = v end
     end
 end
-
--- geometry helpers
 local function rectsIntersect(a, b)
     return not (a.x + a.w <= b.x or b.x + b.w <= a.x or a.y + a.h <= b.y or b.y + b.h <= a.y)
 end
@@ -88,8 +92,6 @@ local function _clampTopLeftToScreen(self, screen, tl)
     local y  = clamp((tl and tl.y) or (sf.y + 80), sf.y, sf.y + sf.h - sz)
     return { x = x, y = y }
 end
-
--- Resolve desired top-left for a given screen (per-screen memory, else relative mapping, else default)
 local function _resolveTopLeftForScreen(self, screen)
     local sid = screen:id()
     local saved = self._posByScreen and self._posByScreen[sid]
@@ -112,7 +114,9 @@ local function _resolveTopLeftForScreen(self, screen)
     return _clampTopLeftToScreen(self, screen, tl)
 end
 
+-- =====================
 -- Config
+-- =====================
 function obj:configure(cfg)
     if type(cfg) ~= "table" then return self end
     if cfg.global then deepMerge(self._cfg.global, cfg.global) end
@@ -134,7 +138,9 @@ function obj:configure(cfg)
     return self
 end
 
--- Fixed menubar icon (no user configuration)
+-- =====================
+-- Menubar
+-- =====================
 local function _fixedIconImage()
     return hs.image.imageFromName("NSSearchTemplate")
 end
@@ -150,24 +156,229 @@ function obj:_updateMenubarIcon()
     end
 end
 
+function obj:_menuItems()
+    local items = {}
+
+    -- Scope enable/disable
+    table.insert(items, {
+        title   = self._cfg.scope.enabled and "Scope: Enabled" or "Scope: Disabled",
+        checked = self._cfg.scope.enabled,
+        fn      = function() self:setScopeEnabled(not self._cfg.scope.enabled) end
+    })
+
+    -- Scope shape submenu
+    table.insert(items, {
+        title = "Scope Shape",
+        menu = {
+            {
+                title = "Rectangle",
+                checked = (self._cfg.scope.shape == "rectangle"),
+                fn = function()
+                    if self._cfg.scope.shape ~= "rectangle" then
+                        self._cfg.scope.shape = "rectangle"
+                        if self._running then
+                            local scr = hs.mouse.getCurrentScreen() or self._lastScreen or hs.screen.mainScreen()
+                            self:_ensureScopeOnScreen(scr)
+                        end
+                    end
+                end
+            },
+            {
+                title = "Circle",
+                checked = (self._cfg.scope.shape == "circle"),
+                fn = function()
+                    if self._cfg.scope.shape ~= "circle" then
+                        self._cfg.scope.shape = "circle"
+                        if self._running then
+                            local scr = hs.mouse.getCurrentScreen() or self._lastScreen or hs.screen.mainScreen()
+                            self:_ensureScopeOnScreen(scr)
+                        end
+                    end
+                end
+            },
+        }
+    })
+
+    -- Cursor shape submenu
+    table.insert(items, {
+        title = "Cursor Shape",
+        menu = {
+            {
+                title = "Ring",
+                checked = (self._cfg.cursor.shape == "ring"),
+                fn = function()
+                    if self._cfg.cursor.shape ~= "ring" then
+                        self._cfg.cursor.shape = "ring"; if self._running then self:_buildHighlight() end
+                    end
+                end
+            },
+            {
+                title = "Crosshair",
+                checked = (self._cfg.cursor.shape == "crosshair"),
+                fn = function()
+                    if self._cfg.cursor.shape ~= "crosshair" then
+                        self._cfg.cursor.shape = "crosshair"; if self._running then self:_buildHighlight() end
+                    end
+                end
+            },
+            {
+                title = "Dot",
+                checked = (self._cfg.cursor.shape == "dot"),
+                fn = function()
+                    if self._cfg.cursor.shape ~= "dot" then
+                        self._cfg.cursor.shape = "dot"; if self._running then self:_buildHighlight() end
+                    end
+                end
+            },
+        }
+    })
+
+    -- FPS submenu (common presets + Custom…)
+    local currentFPS = math.max(1, tonumber(self._cfg.global.fps) or 30)
+    local fpsChoices = { 15, 24, 30, 45, 60 }
+    local fpsSub = {}
+    for _, f in ipairs(fpsChoices) do
+        table.insert(fpsSub, {
+            title = tostring(f) .. " fps",
+            checked = (currentFPS == f),
+            fn = function()
+                if self._cfg.global.fps ~= f then
+                    self._cfg.global.fps = f
+                    if self._running then self:_restartRenderTimerIfNeeded() end
+                end
+            end
+        })
+    end
+    table.insert(fpsSub, {
+        title = "Custom…",
+        fn = function()
+            if hs.dialog and hs.dialog.textPrompt then
+                local btn, text = hs.dialog.textPrompt("Set FPS", "Enter a number (1–144)", tostring(currentFPS), "OK",
+                    "Cancel")
+                if btn == "OK" then
+                    local val = tonumber(text)
+                    if val then
+                        val = math.max(1, math.min(144, math.floor(val)))
+                        if self._cfg.global.fps ~= val then
+                            self._cfg.global.fps = val
+                            if self._running then self:_restartRenderTimerIfNeeded() end
+                        end
+                    end
+                end
+            else
+                hs.alert.show("hs.dialog not available; use presets.")
+            end
+        end
+    })
+    table.insert(items, { title = "FPS", menu = fpsSub })
+
+    -- Zoom submenu
+    local currentZoom = tonumber(self._cfg.scope.zoom) or 2.0
+    local zoomChoices = { 1.5, 2.0, 3.0, 4.0 }
+    local zoomSub = {}
+    for _, z in ipairs(zoomChoices) do
+        table.insert(zoomSub, {
+            title = tostring(z) .. "×",
+            checked = (math.abs(currentZoom - z) < 0.001),
+            fn = function()
+                if self._cfg.scope.zoom ~= z then
+                    self._cfg.scope.zoom = z
+                end
+            end
+        })
+    end
+    table.insert(zoomSub, {
+        title = "Custom…",
+        fn = function()
+            if hs.dialog and hs.dialog.textPrompt then
+                local btn, text = hs.dialog.textPrompt("Set Zoom", "Enter a number (1.0–8.0)", tostring(currentZoom),
+                    "OK", "Cancel")
+                if btn == "OK" then
+                    local val = tonumber(text)
+                    if val then
+                        val = math.max(1.0, math.min(8.0, val))
+                        self._cfg.scope.zoom = val
+                    end
+                end
+            else
+                hs.alert.show("hs.dialog not available; use presets.")
+            end
+        end
+    })
+    table.insert(items, { title = "Zoom", menu = zoomSub })
+
+    -- Size submenu
+    local currentSize = tonumber(self._cfg.scope.size) or 220
+    local sizeOptions = {
+        { label = "Small",  v = 160 },
+        { label = "Medium", v = 220 },
+        { label = "Large",  v = 320 },
+    }
+    local sizeSub = {}
+    for _, opt in ipairs(sizeOptions) do
+        table.insert(sizeSub, {
+            title = opt.label .. " (" .. tostring(opt.v) .. ")",
+            checked = (currentSize == opt.v),
+            fn = function()
+                if self._cfg.scope.size ~= opt.v then
+                    self._cfg.scope.size = opt.v
+                    if self._running then
+                        local scr = hs.mouse.getCurrentScreen() or self._lastScreen or hs.screen.mainScreen()
+                        self:_ensureScopeOnScreen(scr)
+                    end
+                end
+            end
+        })
+    end
+    table.insert(sizeSub, {
+        title = "Custom…",
+        fn = function()
+            if hs.dialog and hs.dialog.textPrompt then
+                local btn, text = hs.dialog.textPrompt("Set Size", "Enter pixels (min 120, max 600)",
+                    tostring(currentSize), "OK", "Cancel")
+                if btn == "OK" then
+                    local val = tonumber(text)
+                    if val then
+                        val = math.max(120, math.min(600, math.floor(val)))
+                        if self._cfg.scope.size ~= val then
+                            self._cfg.scope.size = val
+                            if self._running then
+                                local scr = hs.mouse.getCurrentScreen() or self._lastScreen or hs.screen.mainScreen()
+                                self:_ensureScopeOnScreen(scr)
+                            end
+                        end
+                    end
+                end
+            else
+                hs.alert.show("hs.dialog not available; use presets.")
+            end
+        end
+    })
+    table.insert(items, { title = "Size", menu = sizeSub })
+
+    table.insert(items, { title = "-" }) -- separator
+    table.insert(items, { title = self._running and "Stop" or "Start", fn = function() self:toggle() end })
+    table.insert(items, { title = "Exit CursorScope", fn = function() self:stop() end })
+
+    return items
+end
+
 function obj:_ensureMenubar(on)
     if on and not self._menubar then
         self._menubar = hs.menubar.new()
         if self._menubar then
             self:_updateMenubarIcon()
             self._menubar:setTooltip("CursorScope")
-            self._menubar:setMenu(function()
-                return {
-                    { title = "Exit CursorScope", fn = function() self:stop() end },
-                }
-            end)
+            self._menubar:setMenu(function() return self:_menuItems() end)
         end
     elseif not on and self._menubar then
         self._menubar:delete(); self._menubar = nil
     end
 end
 
+-- =====================
 -- Cursor highlight
+-- =====================
 function obj:_destroyHighlight()
     local function kill(x) if x then x:delete() end end
     kill(self._highlightCircle); self._highlightCircle = nil
@@ -236,7 +447,9 @@ function obj:_moveHighlight(pos)
     end
 end
 
+-- =====================
 -- Scope (canvas)
+-- =====================
 local function _frameFromTopLeft(self, screen, tl)
     local sz = self._cfg.scope.size
     local clamped = _clampTopLeftToScreen(self, screen, tl)
@@ -247,15 +460,16 @@ function obj:_buildScopeCanvas(frame)
         self._scopeCanvas:delete(); self._scopeCanvas = nil
     end
     local s  = self._cfg.scope
+    local sz = s.size
     local cv = hs.canvas.new(frame)
     cv:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
     cv:level(hs.canvas.windowLevels.overlay)
 
     local shape = s.shape or "rectangle"
     if shape == "circle" then
-        cv[#cv + 1] = { id = "clip", type = "oval", action = "clip", frame = { x = 0, y = 0, w = 100, h = 100 } }
-        cv[#cv + 1] = { id = "bg", type = "rectangle", action = "fill", fillColor = s.background, frame = { x = 0, y = 0, w = 100, h = 100 } }
-        cv[#cv + 1] = { id = "img", type = "image", image = nil, imageScaling = "scaleToFit", frame = { x = 0, y = 0, w = 100, h = 100 } }
+        cv[#cv + 1] = { id = "clip", type = "oval", action = "clip", frame = { x = 0, y = 0, w = sz, h = sz } }
+        cv[#cv + 1] = { id = "bg", type = "rectangle", action = "fill", fillColor = s.background, frame = { x = 0, y = 0, w = sz, h = sz } }
+        cv[#cv + 1] = { id = "img", type = "image", image = nil, imageScaling = "scaleToFit", frame = { x = 0, y = 0, w = sz, h = sz } }
         cv[#cv + 1] = { id = "reset", type = "resetClip" }
         cv[#cv + 1] = {
             id = "border",
@@ -264,11 +478,11 @@ function obj:_buildScopeCanvas(frame)
             strokeColor = s.borderColor,
             strokeWidth = s
                 .borderWidth,
-            frame = { x = 0, y = 0, w = 100, h = 100 }
+            frame = { x = 0, y = 0, w = sz, h = sz }
         }
     else
-        cv[#cv + 1] = { id = "bg", type = "rectangle", action = "fill", fillColor = s.background, frame = { x = 0, y = 0, w = 100, h = 100 }, roundedRectRadii = { xRadius = s.cornerRadius, yRadius = s.cornerRadius } }
-        cv[#cv + 1] = { id = "img", type = "image", image = nil, imageScaling = "scaleToFit", frame = { x = 0, y = 0, w = 100, h = 100 } }
+        cv[#cv + 1] = { id = "bg", type = "rectangle", action = "fill", fillColor = s.background, frame = { x = 0, y = 0, w = sz, h = sz }, roundedRectRadii = { xRadius = s.cornerRadius, yRadius = s.cornerRadius } }
+        cv[#cv + 1] = { id = "img", type = "image", image = nil, imageScaling = "scaleToFit", frame = { x = 0, y = 0, w = sz, h = sz } }
         cv[#cv + 1] = {
             id = "border",
             type = "rectangle",
@@ -276,7 +490,7 @@ function obj:_buildScopeCanvas(frame)
             strokeColor = s.borderColor,
             strokeWidth =
                 s.borderWidth,
-            frame = { x = 0, y = 0, w = 100, h = 100 },
+            frame = { x = 0, y = 0, w = sz, h = sz },
             roundedRectRadii = { xRadius = s.cornerRadius, yRadius = s.cornerRadius }
         }
     end
@@ -311,6 +525,7 @@ function obj:_buildScopeCanvas(frame)
 
     self._scopeCanvas       = cv
     self._scopeShapeApplied = shape
+    self._scopeSizeApplied  = sz
     cv:show()
 end
 
@@ -329,7 +544,7 @@ function obj:_ensureScopeOnScreen(screen)
 
     local frame = hs.geometry.rect(tl.x, tl.y, self._cfg.scope.size, self._cfg.scope.size)
 
-    if not self._scopeCanvas or self._scopeShapeApplied ~= (self._cfg.scope.shape or "rectangle") then
+    if not self._scopeCanvas or self._scopeShapeApplied ~= (self._cfg.scope.shape or "rectangle") or self._scopeSizeApplied ~= self._cfg.scope.size then
         self:_buildScopeCanvas(frame)
     else
         self._scopeCanvas:frame(frame)
@@ -363,7 +578,9 @@ function obj:_updateScopeImage(pos, screen)
     if img then self._scopeCanvas["img"].image = img end
 end
 
+-- =====================
 -- Event taps & render timer
+-- =====================
 function obj:_startEventTap()
     local ev = hs.eventtap.event.types
     self._mouseTap = hs.eventtap.new(
@@ -382,7 +599,6 @@ function obj:_startEventTap()
     ):start()
 end
 
--- Cmd+Alt drag of the scope via a global event tap
 function obj:_startDragEventTap()
     local ev = hs.eventtap.event.types
     self._dragTap = hs.eventtap.new(
@@ -487,7 +703,9 @@ function obj:_stopRenderTimer()
     end
 end
 
+-- =====================
 -- Public API
+-- =====================
 function obj:start()
     if self._running then return self end
     self._running = true
