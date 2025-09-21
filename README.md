@@ -4,15 +4,17 @@ High-visibility **cursor highlight** + optional live **magnifier scope** for [Ha
 
 Follows your pointer across multiple displays, shows a fixed, tasteful menu bar icon while running, and is easy to configure.
 
-> You might also be interested in [KeyCaster](https://github.com/selimacerbas/KeyCaster.spoon)
+> You might also be interested in [KeyCaster](https://github.com/selimacerbas/KeyCaster.spoon), [FocusMode](https://github.com/selimacerbas/FocusMode.spoon)
 
 ---
 
-## Screenshots
+## 🎥 Demo
 
-![Circular scope at top-left](assets/cursor.png)
+![Scope](assets/scope.gif)
 
----
+![Options](assets/options.gif)
+
+![Drag](assets/drag.gif)
 
 ## Features
 
